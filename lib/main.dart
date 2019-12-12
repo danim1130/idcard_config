@@ -6,24 +6,16 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:universal_html/prefer_sdk/html.dart';
 
+import 'models.dart';
+
 void main() => runApp(MyApp());
 
 class MyApp extends StatelessWidget {
-  // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Flutter Demo',
       theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // Try running your application with "flutter run". You'll see the
-        // application has a blue toolbar. Then, without quitting the app, try
-        // changing the primarySwatch below to Colors.green and then invoke
-        // "hot reload" (press "r" in the console where you ran "flutter run",
-        // or simply save your changes to "hot reload" in a Flutter IDE).
-        // Notice that the counter didn't reset back to zero; the application
-        // is not restarted.
         primarySwatch: Colors.blue,
       ),
       home: MyHomePage(title: 'ID Card configuration'),
@@ -34,103 +26,24 @@ class MyApp extends StatelessWidget {
 class MyHomePage extends StatefulWidget {
   MyHomePage({Key key, this.title}) : super(key: key);
 
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
   final String title;
 
   @override
   _MyHomePageState createState() => _MyHomePageState();
 }
 
-class RelativePoint {
-  final double x;
-  final double y;
-
-  RelativePoint(this.x, this.y);
-
-  Map<String, dynamic> toJson() {
-    return {"x": this.x, "y": this.y,};
-  }
-
-
-}
-
-class ScreenRelativeRect {
-  final RelativePoint start;
-  final RelativePoint end;
-
-  ScreenRelativeRect(this.start, this.end);
-
-  Map<String, dynamic> toJson() {
-    return {"start": this.start.toJson(), "end": this.end.toJson(),};
-  }
-
-
-}
-
-const List<String> selectionTypes = [
-  "name", "date", "city", "text", "barcode", "datagram"
-];
-
-class FieldData {
-  final ScreenRelativeRect positionRect;
-  final TextEditingController controller;
-  final String type;
-
-  FieldData({this.positionRect, this.controller, this.type});
-
-  FieldData.empty()
-      : positionRect = null,
-        type = "text",
-        controller = TextEditingController();
-
-  FieldData copy(
-          {ScreenRelativeRect positionRect,
-          TextEditingController controller,
-          String type}) =>
-      FieldData(
-          positionRect: positionRect ?? this.positionRect,
-          controller: controller ?? this.controller,
-          type: type ?? this.type);
-
-  Map<String, dynamic> toJson() {
-    return {
-      "positionRect": this.positionRect.toJson(),
-      "key": this.controller.text,
-      "type": this.type,
-    };
-  }
-
-
-}
-
-class CardConfiguration{
-  final String imageName;
-  final List<FieldData> fields;
-
-  CardConfiguration(this.imageName, this.fields);
-
-  Map<String, dynamic> toJson() {
-    return {"imageName": this.imageName, "fields": this.fields.map((f) => f.toJson()).toList(),};
-  }
-}
-
-GlobalKey _containerKey = GlobalKey();
-
 class _MyHomePageState extends State<MyHomePage> {
+  TextEditingController languageController = TextEditingController();
+
   String _imageName;
   Uint8List _image = Uint8List(0);
+
   RelativePoint _dragStartPos;
   int _selectedFieldPosition;
 
   List<FieldData> _fields = [];
+
+  GlobalKey _containerKey = GlobalKey();
 
   @override
   Widget build(BuildContext context) {
@@ -145,8 +58,8 @@ class _MyHomePageState extends State<MyHomePage> {
               MediaQuery.of(context);
               List<Rect> currentRects = [];
               if (_image.length != 0) {
-                if ((_containerKey?.currentContext?.findRenderObject() as RenderBox) != null) {
-                  var size = (_containerKey.currentContext.findRenderObject() as RenderBox).size;
+                var size = (_containerKey?.currentContext?.findRenderObject() as RenderBox)?.size;
+                if (size != null) {
                   currentRects = _fields.map((f) {
                     var currentRect = f.positionRect;
                     if (currentRect == null) {
@@ -192,7 +105,7 @@ class _MyHomePageState extends State<MyHomePage> {
                   aspectRatio: 1.0 / 1.0,
                   child: Center(
                     child: RaisedButton(
-                      onPressed: _startFilePicker,
+                      onPressed: _startImagePicker,
                       child: Text("Upload an image!"),
                     ),
                   ),
@@ -242,6 +155,18 @@ class _MyHomePageState extends State<MyHomePage> {
                       itemCount: _fields.length,
                     ),
                   ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                    child: SizedBox(
+                      height: 30,
+                      child: TextField(
+                        controller: languageController,
+                        decoration: InputDecoration(
+                          hintText: "Language"
+                        ),
+                      ),
+                    ),
+                  ),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: <Widget>[
@@ -274,7 +199,7 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   _onGenerateConfigurationFile(){
-    var config = CardConfiguration(_imageName, _fields);
+    var config = CardConfiguration(_imageName, _fields, languageController.text);
     String jsonData = Uri.encodeComponent(jsonEncode(config.toJson()));
     new AnchorElement(href: "data:text/plain;charset=utf-8,$jsonData")
       ..setAttribute("download", "card_config.json")
@@ -284,10 +209,8 @@ class _MyHomePageState extends State<MyHomePage> {
   _onDeleteItem(int position){
     setState(() {
       _fields.removeAt(position);
-      if (_selectedFieldPosition == position){
+      if (_selectedFieldPosition == _fields.length){
         _selectedFieldPosition = null;
-      } else if (_selectedFieldPosition > position){
-        _selectedFieldPosition -= 1;
       }
     });
   }
@@ -337,9 +260,10 @@ class _MyHomePageState extends State<MyHomePage> {
 
   _onDragEnd(DragEndDetails details) {}
 
-  _startFilePicker() async {
-    InputElement uploadInput = FileUploadInputElement();
-    uploadInput.click();
+  _startImagePicker() async {
+    InputElement uploadInput = FileUploadInputElement()
+      ..accept = "image/*"
+      ..click();
 
     uploadInput.onChange.listen((e) {
       // read file content as dataURL
